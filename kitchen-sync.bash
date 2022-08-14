@@ -9,6 +9,11 @@ set -euET -o pipefail # put bash into strict mode & have it give descriptive err
 umask 055             # change all generated file perms from 755 to 700
 export LC_ALL=C       # force byte-wise sorting and default langauge output
 
+CACHE=$(mktemp -d)
+readonly CACHE
+
+trap 'rm -rf "$CACHE"' EXIT || exit 1
+
 # params: "github api url"
 github_query() {
     curl --proto '=https' --tlsv1.3 -H 'Accept: application/vnd.github.v3+json' -sSf "$1"
@@ -25,7 +30,13 @@ manage_lists() {
 
         mlr --csv cut -f address 'my-pihole-lists/adlist.csv' >>adlists.txt
         mlr --csv cut -f domain 'my-pihole-lists/domainlist.csv' >>domains.txt
+
+        rm -rf my-pihole-lists/
     done
+}
+
+sorted() {
+    parsort -bfiu -S 100% --parallel=200000 -T "$CACHE" "$1" | sponge "$1"
 }
 
 main() {
@@ -43,6 +54,9 @@ main() {
         github_query "https://api.github.com/repos/stevejenkins/my-pihole-lists/forks?page=${page}" |
             jq -r '.[].clone_url' | manage_lists
     done
+
+    sorted adlists.txt
+    sorted domains.txt
 }
 
 # https://github.com/koalaman/shellcheck/wiki/SC2218
