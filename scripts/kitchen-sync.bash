@@ -10,7 +10,9 @@ umask 055             # change all generated file perms from 755 to 700
 export LC_ALL=C       # force byte-wise sorting and default langauge output
 
 CACHE=$(mktemp -d)
-readonly CACHE
+ADLISTS='dist/adlists.txt'
+DOMAINS='dist/domains.txt'
+readonly CACHE ADLISTS DOMAINS
 
 trap 'rm -rf "$CACHE"' EXIT || exit 1
 
@@ -28,8 +30,8 @@ manage_lists() {
     while IFS= read -r repo_url; do
         git clone "$repo_url"
 
-        mlr --csv cut -f address 'my-pihole-lists/adlist.csv' >>adlists.txt
-        mlr --csv cut -f domain 'my-pihole-lists/domainlist.csv' >>domains.txt
+        mlr --csv cut -f address 'my-pihole-lists/adlist.csv' >>"$ADLISTS"
+        mlr --csv cut -f domain 'my-pihole-lists/domainlist.csv' >>"$DOMAINS"
 
         rm -rf my-pihole-lists/
     done
@@ -49,14 +51,16 @@ main() {
 
     # 30 is the default page count when querying forks
     # trying to increase it up to 100 doesn't work well
+    rm -r dist/
+    mkdir dist/
 
     seq "$page_count" | while IFS= read -r page; do
         github_query "https://api.github.com/repos/stevejenkins/my-pihole-lists/forks?page=${page}" |
             jq -r '.[].clone_url' | manage_lists
     done
 
-    sorted adlists.txt
-    sorted domains.txt
+    sorted "$ADLISTS"
+    sorted "$DOMAINS"
 }
 
 # https://github.com/koalaman/shellcheck/wiki/SC2218
