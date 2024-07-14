@@ -32,32 +32,33 @@ manage_lists() {
     local fname;
 
     while IFS= read -r repo_url; do
+        dirname="$(basename ${repo_url%.*})"
+        dirname="${CACHE}/${dirname}"
+
         set +e # Temporarily disable strict fail, in case web requests fail
-        git clone "$repo_url"
+        git clone --no-hardlinks --depth 1 "$repo_url" "$dirname"
 
         exit_code=$?
 
         if [ $exit_code -eq 0 ]; then
-            dirname="$(basename ${repo_url%.*})"
-
             set -e # Enable error checks to fail if something bad happens while processing lists
 
             fname="${dirname}/adlist.csv"
 
             if [ -f "$fname" ]; then
-                mlr --csv --headerless-csv-output cut -f address "$fname" >>"$ADLISTS"
+                mlr --mmap --csv --headerless-csv-output --skip-comments clean-whitespace then cut -f address "$fname" >>"$ADLISTS"
             fi
 
             fname="${dirname}/domainlist.csv"
 
             if [ -f "$fname" ]; then
-                mlr --csv --headerless-csv-output cut -f address "$fname" >>"$DOMAINS"
+                mlr --mmap --csv --headerless-csv-output --skip-comments clean-whitespace then cut -f address "$fname" >>"$DOMAINS"
             fi
 
             fname="${dirname}/adlists.txt"
 
             if [ -f "$fname" ]; then
-                mawk '/^[^[:space:]|^#|^!|^;|^$|^:|^*]/{print $1}' "$fname" >>"$ADLISTS"
+                mawk '/^[http]/{print $1}' "$fname" >>"$ADLISTS"
             fi
 
             fname="${dirname}/blacklist.txt"
@@ -73,8 +74,21 @@ manage_lists() {
     done
 }
 
+# https://github.com/ildar-shaimordanov/perl-utils#sponge
+sponge() {
+	perl5.41.1 -ne '
+	push @lines, $_;
+	END {
+		open(OUT, ">$file")
+		or die "sponge: cannot open $file: $!\n";
+		print OUT @lines;
+		close(OUT);
+	}
+	' -s -- -file="$1"
+}
+
 sorted() {
-    mawk '{$1=$1};1' "$1" | parsort -bfiu -S 100% -T "$CACHE" | sponge "$1"
+    mawk '{$1=$1}; NF && /^[^[:space:]|^#|^!|^"]/ && !seen[$0]++;' "$1" | parsort -bfiu -S 100% -T "$CACHE" | sponge "$1"
 }
 
 main() {
